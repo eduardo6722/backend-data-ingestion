@@ -4,6 +4,7 @@ import { Make } from '../../domain/makes/entity/make';
 import { IMakeCache } from '../../domain/makes/ports/make.cache';
 import { Page } from '../../domain/shared/ports/repository';
 import { VehicleType } from '../../domain/vehicle-type/entity/vehicle-type';
+import { Env } from '../../config';
 import { logger } from '../../logger';
 import { RedisService } from './redis.service';
 
@@ -31,10 +32,11 @@ export class RedisMakeCache implements IMakeCache {
 
   constructor(
     private readonly redis: RedisService,
-    configService: ConfigService,
+    configService: ConfigService<Env, true>,
   ) {
-    const ttl = Number(configService.get('MAKES_CACHE_TTL_SECONDS'));
-    this.ttlSeconds = Number.isFinite(ttl) && ttl > 0 ? ttl : 300;
+    this.ttlSeconds = configService.get('MAKES_CACHE_TTL_SECONDS', {
+      infer: true,
+    });
   }
 
   async getMany(skip: number, take: number): Promise<Page<Make> | null> {

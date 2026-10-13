@@ -41,6 +41,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: ${PORT:-8080}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
       DATABASE_URL: postgresql://prisma:prisma@postgres:5432/makes?schema=public
       REDIS_URL: redis://redis:6379
       MAKES_CACHE_TTL_SECONDS: ${MAKES_CACHE_TTL_SECONDS:-300}

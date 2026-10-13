@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { createObserveModule } from '@nestjs/observe';
+import { validateEnv } from '../../config';
 import { PrismaModule } from '../../infrastructure/prisma/prisma.module';
 import { RedisModule } from '../../infrastructure/redis/redis.module';
 import { logger } from '../../logger';
@@ -14,7 +15,11 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      ignoreEnvFile: true,
+      validate: validateEnv,
+    }),
     PrismaModule,
     RedisModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({

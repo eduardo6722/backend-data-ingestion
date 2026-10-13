@@ -1,5 +1,4 @@
 import { jest } from '@jest/globals';
-import { ConfigService } from '@nestjs/config';
 import { Make } from '../../domain/makes/entity/make';
 import { VehicleType } from '../../domain/vehicle-type/entity/vehicle-type';
 import { logger } from '../../logger';
@@ -38,7 +37,7 @@ describe('RedisMakeCache', () => {
 
     cache = new RedisMakeCache(
       redis as unknown as RedisService,
-      { get: () => '60' } as unknown as ConfigService,
+      { get: () => 60 } as any,
     );
   });
 

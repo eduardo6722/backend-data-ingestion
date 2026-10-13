@@ -1,11 +1,10 @@
 import { readdirSync, readFileSync, readlinkSync } from 'node:fs';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { Env } from './config';
 import { logger, nestLogger } from './logger';
 import { AppModule } from './modules/app/app.module';
 import { UnexpectedExceptionFilter } from './unexpected-exception.filter';
-
-const isProduction = process.env.NODE_ENV === 'production';
 
 function killOtherListeners(port: number) {
   const hexPort = port.toString(16).toUpperCase().padStart(4, '0');
@@ -66,10 +65,10 @@ async function bootstrap() {
   app.useGlobalFilters(new UnexpectedExceptionFilter());
   app.enableShutdownHooks();
 
-  const config = app.get(ConfigService);
-  const port = Number(config.get('PORT') ?? 8080);
+  const config = app.get(ConfigService<Env, true>);
+  const port = config.get('PORT', { infer: true });
 
-  if (!isProduction) {
+  if (config.get('NODE_ENV', { infer: true }) !== 'production') {
     killOtherListeners(port);
   }
 

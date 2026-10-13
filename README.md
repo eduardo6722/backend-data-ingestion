@@ -31,6 +31,22 @@
 $ npm install
 ```
 
+## Configuration
+
+Config is loaded from `.env` (local overrides) then `.env.${NODE_ENV}` (per-environment defaults), and validated with Zod on startup (`src/config.ts`). Invalid values stop the process. Already-set environment variables (for example Docker) are not overwritten.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `NODE_ENV` | `development` | `development`, `test`, or `production` |
+| `PORT` | `8080` | HTTP port |
+| `LOG_LEVEL` | `debug` / `silent` / `info` | Pino level. Default depends on `NODE_ENV` (dev / test / prod) |
+| `DATABASE_URL` | local Postgres in dev/test | Required in production |
+| `REDIS_URL` | `redis://localhost:6379` in dev/test | Required in production |
+| `VPIC_BASE_URL` | `https://vpic.nhtsa.dot.gov` | NHTSA vPIC API |
+| `MAKES_CACHE_TTL_SECONDS` | `300` | Redis TTL for make listings |
+
+Copy `.env.example` to `.env.development` or `.env.test` for local overrides. Production should set `DATABASE_URL` and `REDIS_URL` in the environment.
+
 ## Compile and run the project
 
 ```bash
