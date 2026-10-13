@@ -1,0 +1,60 @@
+# Development-only stack. Do not use this Compose file for production.
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: prisma
+      POSTGRES_PASSWORD: prisma
+      POSTGRES_DB: makes
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U prisma -d makes']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    init: true
+    tty: true
+    stdin_open: true
+    ports:
+      - '${PORT:-8080}:8080'
+    environment:
+      NODE_ENV: development
+      PORT: ${PORT:-8080}
+      DATABASE_URL: postgresql://prisma:prisma@postgres:5432/makes?schema=public
+      REDIS_URL: redis://redis:6379
+      MAKES_CACHE_TTL_SECONDS: ${MAKES_CACHE_TTL_SECONDS:-300}
+      VPIC_BASE_URL: ${VPIC_BASE_URL:-https://vpic.nhtsa.dot.gov}
+
+    volumes:
+      - .:/app:Z
+      - backend_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  backend_node_modules:

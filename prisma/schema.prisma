@@ -1,0 +1,31 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Make {
+  makeId       Int           @id
+  makeName     String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  vehicleTypes VehicleType[]
+
+  @@map("makes")
+}
+
+model VehicleType {
+  makeId    Int
+  typeId    Int
+  typeName  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  make      Make     @relation(fields: [makeId], references: [makeId], onDelete: Cascade)
+
+  @@id([makeId, typeId])
+  @@map("vehicle_types")
+}

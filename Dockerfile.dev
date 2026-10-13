@@ -1,0 +1,13 @@
+FROM node:24-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=development
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --fetch-retries=5 \
+  && sha256sum package-lock.json | awk '{print $1}' > node_modules/.compose-lock-stamp
+COPY docker/dev-entrypoint.sh /usr/local/bin/dev-entrypoint.sh
+RUN chmod +x /usr/local/bin/dev-entrypoint.sh
+EXPOSE 8080
+CMD ["dev-entrypoint.sh"]
