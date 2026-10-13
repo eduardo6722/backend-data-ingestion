@@ -1,134 +1,324 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Vehicle Makes API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS service that ingests vehicle makes and vehicle types from the [NHTSA vPIC](https://vpic.nhtsa.dot.gov/api/) catalog, stores them in PostgreSQL, caches paginated listings in Redis, and exposes them over GraphQL.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+| Surface | Location |
+|---|---|
+| GraphQL | `POST /graphql` (GraphiQL at the same path in the browser) |
+| Ingestion | `POST /makes/sync` |
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Local setup
 
-## Project setup
+**Prerequisites:** Node.js 24, npm, and Docker with Compose.
+
+### Recommended: full stack with Compose
 
 ```bash
-$ npm install
+cp .env.example .env
+npm run compose:dev
 ```
 
-## Configuration
+That command builds `Dockerfile.dev` and starts PostgreSQL 17, Redis 7, and the API. On boot the container:
 
-Config is loaded from `.env` (local overrides) then `.env.${NODE_ENV}` (per-environment defaults), and validated with Zod on startup (`src/config.ts`). Invalid values stop the process. Already-set environment variables (for example Docker) are not overwritten.
+1. Installs dependencies if `package-lock.json` changed
+2. Generates the Prisma client
+3. Applies migrations (`prisma migrate deploy`)
+4. Starts the compiler and process in watch mode
 
-| Variable | Default | Notes |
+The API listens on `http://localhost:8080` (or `PORT` from `.env`).
+
+### Host process, Compose for dependencies
+
+```bash
+cp .env.example .env
+docker compose up postgres redis
+npm install
+npx prisma migrate deploy
+npm run start:dev
+```
+
+`npm install` also runs `prisma generate` via the `postinstall` hook.
+
+### Verify
+
+```bash
+curl http://localhost:8080
+# Hello World!
+
+# Start ingestion (returns immediately; work continues in the background)
+curl -X POST http://localhost:8080/makes/sync
+```
+
+Then open [http://localhost:8080/graphql](http://localhost:8080/graphql) and run a `getMakes` query (examples below).
+
+---
+
+## Environment variables
+
+Configuration is loaded from the process environment (and from `.env` via `dotenv` — existing variables are never overwritten). Values are validated with Zod on startup in `src/config.ts`. Invalid configuration stops the process.
+
+| Variable | Default | Description |
 |---|---|---|
-| `NODE_ENV` | `development` | `development`, `test`, or `production` |
-| `PORT` | `8080` | HTTP port |
-| `LOG_LEVEL` | `debug` / `silent` / `info` | Pino level. Default depends on `NODE_ENV` (dev / test / prod) |
-| `DATABASE_URL` | local Postgres in dev/test | Required in production |
-| `REDIS_URL` | `redis://localhost:6379` in dev/test | Required in production |
-| `VPIC_BASE_URL` | `https://vpic.nhtsa.dot.gov` | NHTSA vPIC API |
-| `MAKES_CACHE_TTL_SECONDS` | `300` | Redis TTL for make listings |
+| `NODE_ENV` | `development` | `development`, `test`, or `production`. |
+| `PORT` | `8080` | HTTP listen port. |
+| `LOG_LEVEL` | see notes | Pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, or `silent`. If unset: `debug` in development, `silent` in test, `info` in production. |
+| `DATABASE_URL` | local Postgres in non-prod | PostgreSQL connection string. **Required in production.** Dev/test default: `postgresql://prisma:prisma@localhost:5432/makes?schema=public`. |
+| `REDIS_URL` | local Redis in non-prod | Redis connection string. **Required in production.** Dev/test default: `redis://localhost:6379`. |
+| `VPIC_BASE_URL` | `https://vpic.nhtsa.dot.gov` | Base URL for the NHTSA vPIC HTTP client. |
+| `MAKES_CACHE_TTL_SECONDS` | `300` | Redis TTL (seconds) for cached `getMakes` pages. |
 
-Copy `.env.example` to `.env.development` or `.env.test` for local overrides. Production should set `DATABASE_URL` and `REDIS_URL` in the environment.
+Copy `.env.example` to `.env` for local overrides. Docker Compose injects `DATABASE_URL` and `REDIS_URL` so the API talks to the Compose services by hostname.
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
+## Build
 
 ```bash
-# unit tests
-$ npm run test
+# Generate Prisma client (also runs on npm install)
+npm run prisma:generate
 
-# e2e tests
-$ npm run test:e2e
+# Compile TypeScript to dist/
+npm run build
 
-# test coverage
-$ npm run test:cov
+# Run the compiled app (requires DATABASE_URL and REDIS_URL)
+npm run start:prod
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Watch mode (used by Compose):
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Production image (`Dockerfile`) is a multi-stage Node 24 build: `npm ci`, `prisma generate`, `npm run build`, then a pruned runtime image. The entrypoint runs `prisma migrate deploy` before `node dist/main.js`.
 
-## Observability
+```bash
+docker build -t vehicle-makes-api .
+```
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+---
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+## Data model
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+Makes and vehicle types come from vPIC. A make has many vehicle types. Deleting a make cascades to its types.
 
-This project is already instrumented. Create a free account at [observe.nestjs.com](https://observe.nestjs.com), add an application, and paste the generated app key and secret into the `ObserveModule.forRoot()` call in `src/app.module.ts`.
+```
+┌─────────────────────┐       ┌──────────────────────────┐
+│ makes               │       │ vehicle_types            │
+├─────────────────────┤       ├──────────────────────────┤
+│ makeId     PK  int  │──┐    │ makeId     PK/FK  int    │
+│ makeName       text │  └───<│ typeId     PK     int    │
+│ createdAt      timestamptz  │ typeName          text   │
+│ updatedAt      timestamptz  │ createdAt         timestamptz
+└─────────────────────┘       │ updatedAt         timestamptz
+                              └──────────────────────────┘
+```
 
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
+Defined in `prisma/schema.prisma`:
 
-## Resources
+| Table | Column | Type | Notes |
+|---|---|---|---|
+| `makes` | `makeId` | `Int` | Primary key; vPIC `Make_ID`. |
+| | `makeName` | `String` | vPIC `Make_Name`. |
+| | `createdAt` / `updatedAt` | `DateTime` | Set/updated by Prisma. |
+| `vehicle_types` | `(makeId, typeId)` | composite PK | `makeId` references `makes.makeId` (`ON DELETE CASCADE`). |
+| | `typeName` | `String` | vPIC `VehicleTypeName`. |
+| | `createdAt` / `updatedAt` | `DateTime` | Set/updated by Prisma. |
 
-Check out a few resources that may come in handy when working with NestJS:
+Domain entities (`src/domain/.../entity`) keep IDs as strings and reject empty `makeId`, `makeName`, `typeId`, or `typeName`. Listings are ordered by `makeName` / `typeName` ascending.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+---
 
-## Support
+## GraphQL schema
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+The schema is code-first (`autoSchemaFile: true` in `AppModule`). Equivalent SDL:
 
-## Stay in touch
+```graphql
+type Query {
+  """Paginated makes, each with nested vehicle types. Defaults: skip=0, take=10."""
+  getMakes(skip: Int = 0, take: Int = 10): [Make!]!
+}
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+type Make {
+  makeId: String!
+  makeName: String!
+  vehicleTypes: [MakeVehicleType!]!
+}
 
-## License
+type MakeVehicleType {
+  typeId: String!
+  typeName: String!
+}
+```
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+`makeId` and `typeId` are GraphQL strings even though they are integers in PostgreSQL.
+
+Reads go through Redis first (`makes:{version}:page:{skip}:{take}`). A cache miss loads Postgres and stores the page for `MAKES_CACHE_TTL_SECONDS`. Sync invalidates by incrementing `makes:version` so old pages expire naturally.
+
+If listing fails, the resolver returns `[]` rather than an error.
+
+### Example queries
+
+Default page (10 makes):
+
+```graphql
+query Makes {
+  getMakes {
+    makeId
+    makeName
+    vehicleTypes {
+      typeId
+      typeName
+    }
+  }
+}
+```
+
+Custom pagination:
+
+```graphql
+query MakesPage {
+  getMakes(skip: 20, take: 5) {
+    makeId
+    makeName
+    vehicleTypes {
+      typeId
+      typeName
+    }
+  }
+}
+```
+
+cURL:
+
+```bash
+curl -X POST http://localhost:8080/graphql \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{ getMakes(skip: 0, take: 2) { makeId makeName vehicleTypes { typeId typeName } } }"}'
+```
+
+Example response:
+
+```json
+{
+  "data": {
+    "getMakes": [
+      {
+        "makeId": "440",
+        "makeName": "ASTON MARTIN",
+        "vehicleTypes": [
+          { "typeId": "2", "typeName": "Passenger Car" },
+          { "typeId": "7", "typeName": "Multipurpose Passenger Vehicle (MPV)" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
+# API documentation
+
+## Internal ingestion pipeline
+
+Triggered by `POST /makes/sync`. The HTTP handler returns immediately (`void` fire-and-forget); work continues in `SyncMakesUseCase`.
+
+```
+POST /makes/sync
+        │
+        ▼
+  getAllMakes (vPIC XML)
+        │
+        ▼
+  parse + validate Make entities
+  (skip invalid rows)
+        │
+        ▼
+  upsert makes in chunks of 100
+        │
+        ▼
+  invalidate Redis listing cache
+        │
+        ▼
+  for each make:
+        getVehicleTypesForMakeId (vPIC XML)
+        parse + validate VehicleType entities
+        upsert types
+        invalidate Redis listing cache
+```
+
+vPIC calls (HTTP client timeout 20s):
+
+| Step | Request |
+|---|---|
+| All makes | `GET {VPIC_BASE_URL}/api/vehicles/getallmakes?format=XML` |
+| Types for a make | `GET {VPIC_BASE_URL}/api/vehicles/GetVehicleTypesForMakeId/{makeId}?format=XML` |
+
+XML is validated, then parsed with `fast-xml-parser`. Single-item vPIC result sets are normalized to arrays.
+
+Persistence is idempotent: Prisma `upsert` on `makeId` and on `(makeId, typeId)`. After makes are stored, the listing cache is invalidated; each successful vehicle-type batch invalidates it again so GraphQL clients see types as they land.
+
+## Error handling strategy
+
+The pipeline is fail-soft: a bad row or a failed make must not abort the rest of the ingest, and the sync HTTP endpoint does not wait for or surface ingest errors.
+
+| Failure | Behavior |
+|---|---|
+| vPIC HTTP / empty body | Log `API request failed`; skip that fetch (empty result). |
+| Invalid XML | Log `XML parsing error`; skip that payload. |
+| Mapping / domain validation | Log `Transformation error`; skip that row. |
+| Database upsert | Log `Datastore insertion error`. Per-row errors in `saveMany` are isolated; a chunk-level failure stops the current sync step (no cache invalidation, no type sync if makes failed). |
+| Redis cache read/write/invalidate | Log `unexpected exception`; reads fall through to Postgres; writes/invalidates are skipped. |
+| `getMakes` unexpected error | Log and return `[]`. |
+
+HTTP (non-GraphQL): `UnexpectedExceptionFilter` maps `HttpException` to its status and message; anything else is logged as `unexpected exception` and returned as `500 Internal server error`.
+
+GraphQL: Apollo `formatError` logs the original error and returns the formatted GraphQL error.
+
+Process: `uncaughtException` is fatal (`process.exit(1)`); `unhandledRejection` is logged; `SIGTERM` / `SIGINT` log shutdown. Prisma connect failure during module init is logged and rethrown so the process does not serve traffic without a database.
+
+Startup configuration errors throw `Invalid configuration: ...` before the server listens.
+
+## Logging strategy
+
+[Pino](https://getpino.io/) is the process logger (`src/logger.ts`). NestJS logging is forwarded through a `LoggerService` adapter. Logs are JSON on stdout (no pretty-printer in production).
+
+- **Level:** `LOG_LEVEL` (see environment variables).
+- **Test:** logging is disabled when `NODE_ENV=test`.
+- **Shape:** message string plus structured fields (`err`, `url`, `makeId`, `port`, `context`, …). Prefer `err` for exceptions so Pino serializes the stack.
+
+Recurring messages:
+
+| Message | Typical meaning |
+|---|---|
+| `starting app` / `app started` | Bootstrap. |
+| `API request failed` | vPIC HTTP error or empty body. |
+| `XML parsing error` | Invalid or unparsable vPIC XML. |
+| `Transformation error` | Catalog row failed mapping or domain validation. |
+| `Datastore insertion error` | Prisma upsert failed. |
+| `unexpected exception` | Unclassified failure (HTTP filter, GraphQL, cache, Redis, listing). |
+| `failed to start` | Bootstrap threw. |
+| `shutting down` | `SIGTERM` / `SIGINT`. |
+
+## Configuration approach
+
+1. **Load** — `dotenv` reads `.env` without overriding variables already set (Compose, Kubernetes, a local shell). `ConfigModule` is global with `ignoreEnvFile: true`; Nest uses `process.env` only.
+2. **Default** — `withDefaults()` fills `LOG_LEVEL`, `DATABASE_URL`, and `REDIS_URL` for non-production. Production must supply database and Redis URLs.
+3. **Validate** — Zod `envSchema` coerces types (`PORT`, `MAKES_CACHE_TTL_SECONDS`), checks enums and URL shape, and throws a single `Invalid configuration` error with issue paths if anything is wrong.
+4. **Inject** — `ConfigService<Env, true>` is the only runtime config API (Prisma adapter, Redis client, vPIC `baseUrl`, cache TTL, listen port).
+
+Prisma CLI uses the same `DATABASE_URL` via `prisma7.config.ts`.
+
+---
+
+## Tests
+
+```bash
+npm test          # unit
+npm run test:e2e  # e2e
+npm run test:cov  # coverage
+npm run lint      # oxlint
+```
