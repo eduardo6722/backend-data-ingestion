@@ -3,6 +3,7 @@ import { Make } from '../../domain/makes/entity/make';
 import { IMakeRepository } from '../../domain/makes/ports/make.repository';
 import { Page } from '../../domain/shared/ports/repository';
 import { VehicleType } from '../../domain/vehicle-type/entity/vehicle-type';
+import { logger } from '../../logger';
 import { PrismaService } from './prisma.service';
 
 @Injectable()
@@ -34,8 +35,11 @@ export class PrismaMakeRepository implements IMakeRepository {
             },
             update: { makeName: make.makeName },
           });
-        } catch (error: any) {
-          console.info(error?.message || error);
+        } catch (err) {
+          logger.error(
+            { err, makeId: make.makeId },
+            'Datastore insertion error',
+          );
         }
       }),
     );

@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { logger } from '../../../logger';
 import { IMakeCache } from '../../makes/ports/make.cache';
 import { VehicleType } from '../entity/vehicle-type';
 import { IVehicleTypeRepository } from '../ports/vehicle-type.repository';
@@ -26,7 +27,7 @@ describe('Sync vehicle types', () => {
       invalidate: jest.fn(),
     };
     useCase = new SyncVehicleTypesUseCase(catalog, repository, cache);
-    jest.spyOn(console, 'info').mockImplementation(() => undefined);
+    jest.spyOn(logger, 'error').mockImplementation(() => undefined as never);
   });
 
   it('saves catalog items as VehicleType entities', async () => {
@@ -70,5 +71,18 @@ describe('Sync vehicle types', () => {
 
     await expect(useCase.execute('440')).resolves.toBeUndefined();
     expect(cache.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('skips vehicle types that fail transformation', async () => {
+    catalog.getVehicleTypesForMakeId.mockResolvedValue([
+      { id: '2', name: 'Passenger Car' },
+      { id: '', name: '' },
+    ]);
+
+    await useCase.execute('440');
+
+    const saved = repository.saveMany.mock.calls[0][0];
+    expect(saved).toHaveLength(1);
+    expect(saved[0].typeId).toBe('2');
   });
 });

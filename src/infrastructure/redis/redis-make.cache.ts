@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Make } from '../../domain/makes/entity/make';
 import { IMakeCache } from '../../domain/makes/ports/make.cache';
 import { Page } from '../../domain/shared/ports/repository';
 import { VehicleType } from '../../domain/vehicle-type/entity/vehicle-type';
+import { logger } from '../../logger';
 import { RedisService } from './redis.service';
 
 type CachedVehicleType = {
@@ -25,7 +26,6 @@ type CachedMakePage = {
 
 @Injectable()
 export class RedisMakeCache implements IMakeCache {
-  private readonly logger = new Logger(RedisMakeCache.name);
   private readonly ttlSeconds: number;
   private readonly versionKey = 'makes:version';
 
@@ -65,8 +65,8 @@ export class RedisMakeCache implements IMakeCache {
         ),
         total: parsed.total,
       };
-    } catch (error) {
-      this.logger.error(error);
+    } catch (err) {
+      logger.error({ err }, 'unexpected exception');
       return null;
     }
   }
@@ -93,16 +93,16 @@ export class RedisMakeCache implements IMakeCache {
         'EX',
         this.ttlSeconds,
       );
-    } catch (error) {
-      this.logger.error(error);
+    } catch (err) {
+      logger.error({ err }, 'unexpected exception');
     }
   }
 
   async invalidate(): Promise<void> {
     try {
       await this.redis.incr(this.versionKey);
-    } catch (error) {
-      this.logger.error(error);
+    } catch (err) {
+      logger.error({ err }, 'unexpected exception');
     }
   }
 

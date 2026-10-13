@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../../generated/prisma/client';
+import { logger } from '../../logger';
 
 @Injectable()
 export class PrismaService
@@ -16,7 +17,12 @@ export class PrismaService
   }
 
   async onModuleInit() {
-    await this.$connect();
+    try {
+      await this.$connect();
+    } catch (err) {
+      logger.error({ err }, 'unexpected exception');
+      throw err;
+    }
   }
 
   async onModuleDestroy() {

@@ -1,13 +1,14 @@
+import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { createObserveModule } from '@nestjs/observe';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { GraphQLModule } from '@nestjs/graphql';
-import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
-import { MakesModule } from '../makes/makes.module';
+import { createObserveModule } from '@nestjs/observe';
 import { PrismaModule } from '../../infrastructure/prisma/prisma.module';
 import { RedisModule } from '../../infrastructure/redis/redis.module';
+import { logger } from '../../logger';
+import { MakesModule } from '../makes/makes.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -21,6 +22,10 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       autoSchemaFile: true,
       sortSchema: true,
       graphiql: true,
+      formatError: (formattedError, error) => {
+        logger.error({ err: error }, 'unexpected exception');
+        return formattedError;
+      },
     }),
     MakesModule,
   ],

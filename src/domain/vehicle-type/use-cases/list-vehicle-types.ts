@@ -1,3 +1,4 @@
+import { logger } from '../../../logger';
 import { Page } from '../../shared/ports/repository';
 import { VehicleType } from '../entity/vehicle-type';
 import { IVehicleTypeRepository } from '../ports/vehicle-type.repository';
@@ -18,8 +19,8 @@ export class GetVehicleTypesUseCase {
       const result = await this.repository.getMany(skip, take);
 
       return result;
-    } catch (error: any) {
-      console.info(error?.message || error);
+    } catch (err) {
+      logger.error({ err }, 'unexpected exception');
       return null;
     }
   }

@@ -1,62 +1,51 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { HttpClient } from '@nestjs/http-client';
-import { XMLParser } from 'fast-xml-parser';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { IMakeCatalog } from '../../domain/makes/ports/makes-catalog';
 import { IVehicleTypeCatalog } from '../../domain/vehicle-type/ports/vehicle-types-catalog';
+import { logger } from '../../logger';
 
 @Injectable()
 export class VpicService implements IMakeCatalog, IVehicleTypeCatalog {
-  private logger: Logger = new Logger(VpicService.name);
+  private readonly xmlParser = new XMLParser({
+    ignoreAttributes: false,
+    parseTagValue: true,
+  });
 
   constructor(private readonly http: HttpClient) {}
 
   async getAllMakes() {
+    const url = '/api/vehicles/getallmakes?format=XML';
+    const xml = await this.fetchXml(url);
+    if (!xml) return [];
+
+    const parsed = this.parseXml(xml, url);
+    if (!parsed) return [];
+
     try {
-      const response = await this.http.get(
-        '/api/vehicles/getallmakes?format=XML',
-        {
-          responseType: 'text',
-        },
-      );
+      const makes = parsed?.Response?.Results?.AllVehicleMakes;
+      const items = Array.isArray(makes) ? makes : makes ? [makes] : [];
 
-      if (!response) return null;
-
-      const parser = new XMLParser({
-        ignoreAttributes: false,
-        parseTagValue: true,
-      });
-
-      const parsed = parser.parse(response.data);
-
-      return parsed.Response.Results.AllVehicleMakes.map(
-        (item: { Make_ID: number; Make_Name: string }) => ({
-          id: String(item.Make_ID),
-          name: item.Make_Name,
-        }),
-      );
-    } catch (error) {
-      this.logger.error(error);
+      return items.map((item: { Make_ID: number; Make_Name: string }) => ({
+        id: String(item.Make_ID),
+        name: item.Make_Name,
+      }));
+    } catch (err) {
+      logger.error({ err, url }, 'Transformation error');
+      return [];
     }
   }
 
   async getVehicleTypesForMakeId(makeId: string) {
+    const url = `/api/vehicles/GetVehicleTypesForMakeId/${makeId}?format=XML`;
+    const xml = await this.fetchXml(url);
+    if (!xml) return [];
+
+    const parsed = this.parseXml(xml, url);
+    if (!parsed) return [];
+
     try {
-      const response = await this.http.get(
-        `/api/vehicles/GetVehicleTypesForMakeId/${makeId}?format=XML`,
-        {
-          responseType: 'text',
-        },
-      );
-
-      if (!response) return [];
-
-      const parser = new XMLParser({
-        ignoreAttributes: false,
-        parseTagValue: true,
-      });
-
-      const parsed = parser.parse(response.data);
-      const results = parsed.Response.Results.VehicleTypesForMakeIds;
+      const results = parsed?.Response?.Results?.VehicleTypesForMakeIds;
       const items = Array.isArray(results) ? results : results ? [results] : [];
 
       return items.map(
@@ -65,9 +54,42 @@ export class VpicService implements IMakeCatalog, IVehicleTypeCatalog {
           name: item.VehicleTypeName,
         }),
       );
-    } catch (error) {
-      this.logger.error(error);
+    } catch (err) {
+      logger.error({ err, makeId, url }, 'Transformation error');
       return [];
+    }
+  }
+
+  private async fetchXml(url: string): Promise<string | null> {
+    try {
+      const response = await this.http.get(url, {
+        responseType: 'text',
+      });
+
+      if (!response?.data) {
+        logger.warn({ url }, 'API request failed');
+        return null;
+      }
+
+      return response.data;
+    } catch (err) {
+      logger.error({ err, url }, 'API request failed');
+      return null;
+    }
+  }
+
+  private parseXml(xml: string, url: string) {
+    try {
+      const valid = XMLValidator.validate(xml);
+      if (valid !== true) {
+        logger.error({ err: valid, url }, 'XML parsing error');
+        return null;
+      }
+
+      return this.xmlParser.parse(xml);
+    } catch (err) {
+      logger.error({ err, url }, 'XML parsing error');
+      return null;
     }
   }
 }

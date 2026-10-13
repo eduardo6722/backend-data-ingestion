@@ -1,3 +1,4 @@
+import { logger } from '../../../logger';
 import { SyncVehicleTypesUseCase } from '../../vehicle-type/use-cases/sync-vehicle-types';
 import { Make } from '../entity/make';
 import { IMakeCache } from '../ports/make.cache';
@@ -15,25 +16,45 @@ export class SyncMakesUseCase {
   ) {}
 
   async execute(): Promise<void> {
+    let makes;
     try {
-      const makes = await this.catalog.getAllMakes();
+      makes = await this.catalog.getAllMakes();
+    } catch (err) {
+      logger.error({ err }, 'API request failed');
+      return;
+    }
 
-      const parsedMakes = await Promise.all(
-        makes.map((make) => new Make(String(make.id), String(make.name))),
-      );
+    if (!makes?.length) {
+      return;
+    }
 
+    const parsedMakes: Make[] = [];
+    for (const make of makes) {
+      try {
+        parsedMakes.push(new Make(String(make.id), String(make.name)));
+      } catch (err) {
+        logger.error({ err, make }, 'Transformation error');
+      }
+    }
+
+    if (!parsedMakes.length) {
+      return;
+    }
+
+    try {
       for (let i = 0; i < parsedMakes.length; i += this.chunkSize) {
         const chunk = parsedMakes.slice(i, i + this.chunkSize);
         await this.repository.saveMany(chunk);
       }
+    } catch (err) {
+      logger.error({ err }, 'Datastore insertion error');
+      return;
+    }
 
-      await this.cache.invalidate();
+    await this.cache.invalidate();
 
-      for (const make of parsedMakes) {
-        await this.syncVehicleTypes.execute(make.makeId);
-      }
-    } catch (error: any) {
-      console.info(error?.message || error);
+    for (const make of parsedMakes) {
+      await this.syncVehicleTypes.execute(make.makeId);
     }
   }
 }

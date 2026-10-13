@@ -1,3 +1,4 @@
+import { logger } from '../../../logger';
 import { Page } from '../../shared/ports/repository';
 import { Make } from '../entity/make';
 import { IMakeCache } from '../ports/make.cache';
@@ -28,8 +29,8 @@ export class GetMakesUseCase {
       await this.cache.setMany(skip, take, result);
 
       return result;
-    } catch (error: any) {
-      console.info(error?.message || error);
+    } catch (err) {
+      logger.error({ err }, 'unexpected exception');
       return null;
     }
   }

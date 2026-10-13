@@ -1,8 +1,8 @@
 import { jest } from '@jest/globals';
-import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Make } from '../../domain/makes/entity/make';
 import { VehicleType } from '../../domain/vehicle-type/entity/vehicle-type';
+import { logger } from '../../logger';
 import { RedisMakeCache } from './redis-make.cache';
 import { RedisService } from './redis.service';
 
@@ -34,7 +34,7 @@ describe('RedisMakeCache', () => {
       >(),
       incr: jest.fn<(key: string) => Promise<number>>(),
     };
-    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(logger, 'error').mockImplementation(() => undefined as never);
 
     cache = new RedisMakeCache(
       redis as unknown as RedisService,

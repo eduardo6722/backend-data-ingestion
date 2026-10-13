@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
-import { Logger } from '@nestjs/common';
 import { HttpClient } from '@nestjs/http-client';
 import { Test, TestingModule } from '@nestjs/testing';
+import { logger } from '../../logger';
 import { VpicService } from './vpic.service';
 
 const MAKES_XML = `
@@ -47,7 +47,8 @@ describe('VpicService', () => {
 
   beforeEach(async () => {
     http.get.mockReset();
-    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(logger, 'error').mockImplementation(() => undefined as never);
+    jest.spyOn(logger, 'warn').mockImplementation(() => undefined as never);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [VpicService, { provide: HttpClient, useValue: http }],
@@ -78,16 +79,30 @@ describe('VpicService', () => {
     );
   });
 
-  it('returns null when the HTTP client returns no response', async () => {
+  it('returns an empty list when the HTTP client returns no response', async () => {
     http.get.mockResolvedValue(null);
 
-    await expect(service.getAllMakes()).resolves.toBeNull();
+    await expect(service.getAllMakes()).resolves.toEqual([]);
   });
 
   it('does not throw when the HTTP request fails', async () => {
     http.get.mockRejectedValue(new Error('network error'));
 
-    await expect(service.getAllMakes()).resolves.toBeUndefined();
+    await expect(service.getAllMakes()).resolves.toEqual([]);
+  });
+
+  it('does not throw when XML is invalid', async () => {
+    http.get.mockResolvedValue({ data: '<not-valid-xml' });
+
+    await expect(service.getAllMakes()).resolves.toEqual([]);
+  });
+
+  it('returns an empty list when XML has no makes', async () => {
+    http.get.mockResolvedValue({
+      data: '<Response><Results></Results></Response>',
+    });
+
+    await expect(service.getAllMakes()).resolves.toEqual([]);
   });
 
   it('maps XML vehicle types to catalog items with string ids', async () => {
@@ -120,6 +135,12 @@ describe('VpicService', () => {
 
   it('does not throw when the vehicle types HTTP request fails', async () => {
     http.get.mockRejectedValue(new Error('network error'));
+
+    await expect(service.getVehicleTypesForMakeId('440')).resolves.toEqual([]);
+  });
+
+  it('does not throw when vehicle types XML is invalid', async () => {
+    http.get.mockResolvedValue({ data: '<not-valid-xml' });
 
     await expect(service.getVehicleTypesForMakeId('440')).resolves.toEqual([]);
   });

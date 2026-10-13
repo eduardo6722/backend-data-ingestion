@@ -1,3 +1,4 @@
+import { logger } from '../../../logger';
 import { IMakeCache } from '../../makes/ports/make.cache';
 import { VehicleType } from '../entity/vehicle-type';
 import { IVehicleTypeRepository } from '../ports/vehicle-type.repository';
@@ -11,20 +12,40 @@ export class SyncVehicleTypesUseCase {
   ) {}
 
   async execute(makeId: string): Promise<void> {
+    let vehicleTypes;
     try {
-      const vehicleTypes = await this.catalog.getVehicleTypesForMakeId(makeId);
-
-      const parsedVehicleTypes = await Promise.all(
-        vehicleTypes.map(
-          (vehicleType) =>
-            new VehicleType(makeId, vehicleType.id, vehicleType.name),
-        ),
-      );
-
-      await this.repository.saveMany(parsedVehicleTypes);
-      await this.cache.invalidate();
-    } catch (error: any) {
-      console.info(error?.message || error);
+      vehicleTypes = await this.catalog.getVehicleTypesForMakeId(makeId);
+    } catch (err) {
+      logger.error({ err, makeId }, 'API request failed');
+      return;
     }
+
+    if (!vehicleTypes?.length) {
+      return;
+    }
+
+    const parsedVehicleTypes: VehicleType[] = [];
+    for (const vehicleType of vehicleTypes) {
+      try {
+        parsedVehicleTypes.push(
+          new VehicleType(makeId, vehicleType.id, vehicleType.name),
+        );
+      } catch (err) {
+        logger.error({ err, makeId, vehicleType }, 'Transformation error');
+      }
+    }
+
+    if (!parsedVehicleTypes.length) {
+      return;
+    }
+
+    try {
+      await this.repository.saveMany(parsedVehicleTypes);
+    } catch (err) {
+      logger.error({ err, makeId }, 'Datastore insertion error');
+      return;
+    }
+
+    await this.cache.invalidate();
   }
 }

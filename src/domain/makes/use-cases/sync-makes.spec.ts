@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { logger } from '../../../logger';
 import { SyncVehicleTypesUseCase } from '../../vehicle-type/use-cases/sync-vehicle-types';
 import { Make } from '../entity/make';
 import { IMakeCache } from '../ports/make.cache';
@@ -38,7 +39,7 @@ describe('Sync makes', () => {
       cache,
       syncVehicleTypes as unknown as SyncVehicleTypesUseCase,
     );
-    jest.spyOn(console, 'info').mockImplementation(() => undefined);
+    jest.spyOn(logger, 'error').mockImplementation(() => undefined as never);
   });
 
   it('saves catalog items as Make entities', async () => {
@@ -106,5 +107,19 @@ describe('Sync makes', () => {
     await expect(useCase.execute()).resolves.toBeUndefined();
     expect(cache.invalidate).not.toHaveBeenCalled();
     expect(syncVehicleTypes.execute).not.toHaveBeenCalled();
+  });
+
+  it('skips makes that fail transformation', async () => {
+    catalog.getAllMakes.mockResolvedValue([
+      { id: '1', name: 'Tesla' },
+      { id: '', name: '' },
+    ]);
+
+    await useCase.execute();
+
+    const saved = repository.saveMany.mock.calls[0][0];
+    expect(saved).toHaveLength(1);
+    expect(saved[0].makeId).toBe('1');
+    expect(syncVehicleTypes.execute).toHaveBeenCalledTimes(1);
   });
 });

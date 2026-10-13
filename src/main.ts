@@ -1,7 +1,9 @@
 import { readdirSync, readFileSync, readlinkSync } from 'node:fs';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { logger, nestLogger } from './logger';
 import { AppModule } from './modules/app/app.module';
+import { UnexpectedExceptionFilter } from './unexpected-exception.filter';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -58,11 +60,11 @@ function killOtherListeners(port: number) {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  logger.info('starting app');
 
-  if (isProduction) {
-    app.enableShutdownHooks();
-  }
+  const app = await NestFactory.create(AppModule, { logger: nestLogger });
+  app.useGlobalFilters(new UnexpectedExceptionFilter());
+  app.enableShutdownHooks();
 
   const config = app.get(ConfigService);
   const port = Number(config.get('PORT') ?? 8080);
@@ -72,6 +74,27 @@ async function bootstrap() {
   }
 
   await app.listen(port);
+  logger.info({ port }, 'app started');
 }
 
-void bootstrap();
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'unexpected exception');
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'unexpected exception');
+});
+
+process.on('SIGTERM', () => {
+  logger.info({ signal: 'SIGTERM' }, 'shutting down');
+});
+
+process.on('SIGINT', () => {
+  logger.info({ signal: 'SIGINT' }, 'shutting down');
+});
+
+void bootstrap().catch((err) => {
+  logger.fatal({ err }, 'failed to start');
+  process.exit(1);
+});
